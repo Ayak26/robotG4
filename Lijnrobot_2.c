@@ -1,11 +1,14 @@
 #define M3 4
 #define E3 5
 #define LDRpin A0
-#define KNOP 2 //Aan/uit knop
+#define KNOP 2 //ON/OFF
 
-int LDRvalue = 0;     // result of reading the analog pin
-int lading = 0;
-boolean geladen = false;
+int LDRvalue = 0;
+int cargo = 0; //Number of the cargo being moved
+char receivedChar;
+bool loaded = false;
+bool on = false;
+bool pressed = false;
 
 void setup() {
   pinMode(LDRpin, INPUT);
@@ -21,50 +24,58 @@ void setup() {
   pinMode(11, OUTPUT);
   pinMode(12, OUTPUT);
   pinMode(13, OUTPUT);
-  attachInterrupt(digitalPinToInterrupt(KNOP), aanUit, LOW);
   Serial.begin(9600);
 }
 
-boolean on = false;
-boolean bruikbaar = true;
+
 void loop() {
-  while (on) {
-    LDRvalue = analogRead(A0);
-    if (geladen) {
-      l();
-      teller(lading);
-    } else {
-      e();
-      teller(lading);
-    }
+  on_off();
+
+  if (on) {
+    multiplex(1);
+    serialInput();
+  } else {
+    stopMotor();
+    ledOff();
+    cargo = 0;
+    loaded = false;
   }
 }
 
-void motor(int PWM, boolean omhoog) {
+
+//------------- Motor controls -------------
+
+void motor(int PWM, boolean up) {
   analogWrite(E3, PWM);
-  if (omhoog) {
+  if (up) {
     digitalWrite(M3, HIGH);
   } else {
     digitalWrite(M3, LOW);
   }
 }
 
-void laad() {
-  motor(200, true);
-  delay(2000); //preciese delay testen
-  motor(0, false);
-  lading++;
-  geladen = !geladen;
-  Serial.write(1);
+void load() {
+  motor(255, true);
+  multiplex(1000);
+  stopMotor();
+  cargo++;
+  loaded = true;
+  Serial.println('L');
 }
 
-void los() {
-  motor(200, false);
-  delay(2000); //preciese delay testen
-  motor(0, true);
-  geladen = !geladen;
-  Serial.write(2);
+void unload() {
+  motor(255, false);
+  multiplex(850);
+  stopMotor();
+  loaded = false;
+  Serial.println('U');
 }
+
+void stopMotor() {
+  motor(0, true);
+}
+
+//------------- 7 segment display 1 -------------
 
 void e() {
   digitalWrite(3, LOW);
@@ -90,17 +101,21 @@ void l() {
   digitalWrite(13, LOW);
 }
 
-void teller(int tel) {
+void counter(int tel) {
   if (tel == 0) {
-    nul();
+    zero();
   } else if (tel == 1) {
-    een();
+    one();
   } else if (tel == 2) {
-    twee();
+    two();
+  } else {
+    zero();
   }
 }
 
-void nul() {
+//------------- 7 segment display 2 -------------
+
+void zero() {
   digitalWrite(3, HIGH);
   digitalWrite(6, HIGH);
   digitalWrite(7, HIGH);
@@ -112,7 +127,7 @@ void nul() {
   digitalWrite(13, HIGH);
 }
 
-void een() {
+void one() {
   digitalWrite(3, HIGH);
   digitalWrite(6, LOW);
   digitalWrite(7, LOW);
@@ -124,7 +139,7 @@ void een() {
   digitalWrite(13, HIGH);
 }
 
-void twee() {
+void two() {
   digitalWrite(3, HIGH);
   digitalWrite(6, HIGH);
   digitalWrite(7, LOW);
@@ -136,18 +151,7 @@ void twee() {
   digitalWrite(13, HIGH);
 }
 
-void acht() {
-  digitalWrite(3, HIGH);
-  digitalWrite(6, HIGH);
-  digitalWrite(7, HIGH);
-  digitalWrite(8, HIGH);
-  digitalWrite(9, HIGH);
-  digitalWrite(10, HIGH);
-  digitalWrite(11, HIGH);
-  digitalWrite(12, LOW);
-  digitalWrite(13, LOW);
-}
-void ledUit() {
+void ledOff() {
   digitalWrite(3, LOW);
   digitalWrite(6, LOW);
   digitalWrite(7, LOW);
@@ -158,34 +162,67 @@ void ledUit() {
   digitalWrite(12, LOW);
   digitalWrite(13, LOW);
 }
-void knipper() {
-  acht();
-  delay(300);
-  ledUit();
-  delay(300);
-}
 
-void aanUit() {
-  if (on) {
-    knipper();
-    knipper();
-    on = !on;
-    Serial.write(3);
-  } else {
-    knipper();
-    knipper();
-    knipper();
-    knipper();
-    on = !on;
-    Serial.write(3);
+//------------- 7 segment displays combined -------------
+
+void multiplex(int steps) {
+  for (int i = 0; i < steps; i++) {
+    on_off();
+    if (on) {
+      if (loaded) {
+        l();
+        delay(2);
+        counter(cargo);
+        delay(2);
+      } else {
+        e();
+        delay(2);
+        counter(cargo);
+        delay(2);
+      }
+    } else {
+      break;
+    }
   }
 }
 
-void serialEvent() {
-  byte byteIn = Serial.read();
-  if (byteIn == 1 && !geladen && LDRvalue < 10) {
-    laad();
-  } else if (byteIn == 1 && geladen) {
-    los();
+void on_off() {
+  if (!pressed) {
+    if (digitalRead(KNOP) == LOW) {
+      if (on) {
+        //Make proper reset
+        on = false;
+        Serial.println('O');
+      } else {
+        on = true;
+        Serial.println('I');
+      }
+      pressed = true;
+    }
+  } else {
+    if (digitalRead(KNOP) == HIGH) {
+      pressed = false;
+    }
+  }
+
+}
+
+//------------- Serial communication -------------
+
+void serialInput() {
+  if (Serial.available() > 0) {
+    receivedChar = Serial.read();
+  }
+  if (on) {
+    if (receivedChar == 'L') {
+      if (!loaded) {
+        load();
+      }
+    }
+    if (receivedChar == 'U') {
+      if (loaded) {
+        unload();
+      }
+    }
   }
 }

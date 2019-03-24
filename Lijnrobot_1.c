@@ -1,12 +1,11 @@
-#define M1 4  //Motor rechts richting
-#define E1 5  //Motor rechts snelheid
-#define E2 6  //Motor links snelheid
-#define M2 7  //Motor links richting
-#define LS1 A0 //Ver links
-#define LS2 A1 //Midden links
-#define LS3 A2 //Midden rechts
-#define LS4 A3 //Ver rechts
-#define LS5 A4 //Voorkant
+#define M1 4  //Motor left direction
+#define E1 5  //Motor left speed
+#define E2 6  //Motor right speed
+#define M2 7  //Motor right direction
+#define LS1 A0 //Sensor far left
+#define LS3 A1 //Sensor left
+#define LS2 A2 //Sensor right
+#define LS4 A3 //Sensor far right
 
 void setup() {
   pinMode(E1, OUTPUT);
@@ -17,91 +16,95 @@ void setup() {
   pinMode(LS2, INPUT);
   pinMode(LS3, INPUT);
   pinMode(LS4, INPUT);
-  pinMode(LS5, INPUT);
   Serial.begin(9600);
 }
 
-boolean on = false;
-int draai = 1000; //testen hoelang het duurt om 90 graden te draaien.
-int zwart = 800;
-int lospunt = 0;
+
+int val1;
+int val2;
+int val3;
+int val4;
+int turn = 4000; //Test: time needed to turn 90  degrees.
+const int black = 500;
+char receivedChar;
+bool loaded = false;
+bool sent = false;
+bool on = false;
+
 void loop() {
-  while (on) {
-    if (analogRead(LS1) >= zwart && analogRead(LS2) >= zwart && analogRead(LS3) >= zwart && analogRead(LS4) >= zwart && analogRead(LS5) >= zwart) {
-      links();
-    } else if (analogRead(LS1) >= zwart && analogRead(LS2) >= zwart && analogRead(LS3) >= zwart && analogRead(LS4) >= zwart) {
-      stopMotors();
-      Serial.write(1);
-    } else if (analogRead(LS2) >= zwart && analogRead(LS3) >= zwart && analogRead(LS4) >= zwart && analogRead(LS5) >= zwart && lospunt % 2 != 0) {
-      rechts();
-    } else if (analogRead(LS2) >= zwart && analogRead(LS3) >= zwart && analogRead(LS4) >= zwart) {
-      rechts();
-    } else if (analogRead(LS1) >= zwart && analogRead(LS2) >= zwart && analogRead(LS3) >= zwart) {
-      links();
-    } else if (analogRead(LS2) >= zwart && analogRead(LS3) >= zwart) {
-      vooruit();
-    } else if (analogRead(LS3) >= zwart && analogRead(LS4) >= zwart) {
-      bijstellenRechts();
-    } else if (analogRead(LS1) >= zwart && analogRead(LS2) >= zwart) {
-      bijstellenLinks();
+  if (on) {
+    //Infinite loop to test communication
+    if (!sent) {
+      if (loaded) {
+        serialOutput('U');
+      } else {
+        serialOutput('L');
+      }
     }
+  } else {
+    //Make proper reset
+    stopMotors();
+    loaded = false;
+    sent = false;
   }
+
+  serialInput();
+
 }
 
-void motor1(int PWM, boolean vooruit) {
+//------------- Motor controls -------------
+
+void motor1(int PWM, boolean forward) {
   analogWrite(E1, PWM);
-  if (!vooruit) {
+  if (forward) {
     digitalWrite(M1, HIGH);
   } else {
     digitalWrite(M1, LOW);
   }
 }
 
-void motor2(int PWM, boolean vooruit) {
+void motor2(int PWM, boolean forward) {
   analogWrite(E2, PWM);
-  if (vooruit) {
-    digitalWrite(M2, HIGH);
-  } else {
+  if (forward) {
     digitalWrite(M2, LOW);
+  } else {
+    digitalWrite(M2, HIGH);
   }
 }
 
-void vooruit() {
+void forward() {
   motor1(255, true);
   motor2(255, true);
 }
 
-void achteruit() {
+void backwards() {
   motor1(255, false);
   motor2(255, false);
 }
 
-void rechts() {
+void left() {
   motor1(255, false);
   motor2(255, true);
-  delay(draai);
 }
 
-void links() {
+void right() {
   motor1(255, true);
   motor2(255, false);
-  delay(draai);
 }
 
-void bijstellenRechts() {
-  motor1(240, true);
-  motor2(255, true);
-}
-
-void bijstellenLinks() {
-  motor1(255, true);
+void adjustLeft() {
+  motor1(180, true);
   motor2(240, true);
 }
 
-void omdraaien() {
+void adjustRight() {
+  motor1(240, true);
+  motor2(180, true);
+}
+
+void turnAround() {
   motor1(255, false);
   motor2(255, true);
-  delay(2 * draai);
 }
 
 void stopMotors() {
@@ -109,16 +112,33 @@ void stopMotors() {
   motor2(0, false);
 }
 
-void serialEvent() {
-  byte byteIn = Serial.read();
-  if (byteIn == 1) {
-    lospunt++;
-    omdraaien();
-  } else if (byteIn == 2) {
-    achteruit();
-    delay(1000); //testen
-    omdraaien();
-  } else if (byteIn == 3) {
-    on = !on;
+//------------- Serial communication -------------
+
+void serialInput() {
+  if (Serial.available() > 0) {
+    receivedChar = Serial.read();
+    if (receivedChar == 'I') {
+      on = true;
+    }
+    if (receivedChar == 'O') {
+      on = false;
+    }
+
+    if (on) {
+      if (receivedChar == 'L') {
+        loaded = true;
+        sent = false;
+      }
+      if (receivedChar == 'U') {
+        loaded = false;
+        sent = false;
+      }
+
+    }
   }
+}
+
+void serialOutput(char output) {
+  Serial.println(output);
+  sent = true;
 }
