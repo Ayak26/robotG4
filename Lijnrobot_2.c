@@ -1,22 +1,34 @@
 #define M3 4
 #define E3 5
-#define LDRpin A0
-#define KNOP 2 //ON/OFF
+#define LDR A0
+#define BUT 2 //ON/OFF
 
-int LDRvalue = 0;
-int cargo = 0; //Number of the cargo being moved
+
+//------------- Constant variables -------------
+
+const int sensor = 200; //Makkelijk bovenaan voor snelle aanpassing voor LDR gevoeligheid
+
+//------------- Changing variables -------------
+
+int LDRvalue;
+int cargo = 0; 
 char receivedChar;
-bool loaded = false;
+
+//------------- Switches -------------
+
 bool on = false;
-bool pressed = false;
+bool pressed = false; // Zorgt dat aan/uit knop niet ingehouden kan worden voor continu aan/uit gaan.
+bool reset = false;
+bool loaded = false;
+bool needAction = false; // Zorgt dat het in serialInput blijft wachten totdat de LDR iets ziet, voordat hij gaat laden.
 
 void setup() {
-  pinMode(LDRpin, INPUT);
-  pinMode(KNOP, INPUT_PULLUP);
+  pinMode(LDR, INPUT);
+  pinMode(BUT, INPUT_PULLUP);
   pinMode(3, OUTPUT);
-  pinMode(6, OUTPUT);
   pinMode(M3, OUTPUT);
   pinMode(E3, OUTPUT);
+  pinMode(6, OUTPUT);
   pinMode(7, OUTPUT);
   pinMode(8, OUTPUT);
   pinMode(9, OUTPUT);
@@ -24,22 +36,27 @@ void setup() {
   pinMode(11, OUTPUT);
   pinMode(12, OUTPUT);
   pinMode(13, OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(BUT), on_off, CHANGE);
   Serial.begin(9600);
 }
 
 
 void loop() {
-  on_off();
 
   if (on) {
     multiplex(1);
     serialInput();
   } else {
-    stopMotor();
-    ledOff();
-    cargo = 0;
-    loaded = false;
+    if (reset) {
+      stopMotor();
+      ledOff();
+      cargo = 0;
+      loaded = false;
+      reset = false;
+      needAction = false;
+    }
   }
+  
 }
 
 
@@ -102,14 +119,16 @@ void l() {
 }
 
 void counter(int tel) {
-  if (tel == 0) {
-    zero();
-  } else if (tel == 1) {
-    one();
-  } else if (tel == 2) {
-    two();
-  } else {
-    zero();
+  switch (tel) {
+    case 1:
+      one();
+      break;
+    case 2:
+      two;
+      break;
+    default:
+      zero();
+      break;
   }
 }
 
@@ -167,7 +186,6 @@ void ledOff() {
 
 void multiplex(int steps) {
   for (int i = 0; i < steps; i++) {
-    on_off();
     if (on) {
       if (loaded) {
         l();
@@ -188,10 +206,10 @@ void multiplex(int steps) {
 
 void on_off() {
   if (!pressed) {
-    if (digitalRead(KNOP) == LOW) {
+    if (digitalRead(BUT) == LOW) {
       if (on) {
-        //Make proper reset
         on = false;
+        reset = true;
         Serial.println('O');
       } else {
         on = true;
@@ -200,7 +218,7 @@ void on_off() {
       pressed = true;
     }
   } else {
-    if (digitalRead(KNOP) == HIGH) {
+    if (digitalRead(BUT) == HIGH) {
       pressed = false;
     }
   }
@@ -212,17 +230,31 @@ void on_off() {
 void serialInput() {
   if (Serial.available() > 0) {
     receivedChar = Serial.read();
+    needAction = true;
   }
-  if (on) {
-    if (receivedChar == 'L') {
-      if (!loaded) {
-        load();
+
+  while (needAction) {
+    if (on) {
+      
+      multiplex(1);
+      
+      if (receivedChar == 'L') {
+        if (!loaded) {
+          if (analogRead(LDR) < sensor) {
+            load();
+            needAction = false;
+          }
+        }
       }
-    }
-    if (receivedChar == 'U') {
-      if (loaded) {
-        unload();
+
+      if (receivedChar == 'U') {
+        if (loaded) {
+          unload();
+          needAction = false;
+        }
       }
+      
     }
   }
+  
 }
